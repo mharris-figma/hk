@@ -74,14 +74,18 @@ impl Step {
     ///
     /// # Returns
     ///
-    /// * `Ok(true)` - Diff was applied successfully
-    /// * `Ok(false)` - Diff application failed and changed nothing (caller should fall back to fixer)
+    /// * `Ok(Some(changed))` - Diff was applied successfully; `changed` reports content changes
+    /// * `Ok(None)` - Diff application failed and changed nothing (caller should fall back to fixer)
     /// * `Err(_)` - Writing failed and some files couldn't be restored, so the
     ///   fixer must not run on them
-    pub(crate) fn apply_diff_output(&self, stdout: &str, dir: Option<&str>) -> Result<bool> {
+    pub(crate) fn apply_diff_output(
+        &self,
+        stdout: &str,
+        dir: Option<&str>,
+    ) -> Result<Option<bool>> {
         if stdout.trim().is_empty() {
             debug!("{}: no diff content to apply", self.name);
-            return Ok(false);
+            return Ok(None);
         }
         let diff_content = normalize_diff_paths(stdout);
 
@@ -102,7 +106,7 @@ impl Step {
         match apply_patch(&diff_content, strip, &base) {
             Ok(files) => {
                 debug!("{}: applied diff to {} file(s)", self.name, files);
-                Ok(true)
+                Ok(Some(files > 0))
             }
             Err(PatchError::RollbackFailed(reason)) => eyre::bail!(
                 "{}: applying the check_diff patch failed and some files could not be restored; check them before running hk again: {reason}",
@@ -121,7 +125,7 @@ impl Step {
                 } else {
                     debug!("{}: check_diff output is not a patch: {reason}", self.name);
                 }
-                Ok(false)
+                Ok(None)
             }
         }
     }
@@ -291,7 +295,10 @@ fn apply_patch(diff: &str, strip: usize, base: &Path) -> std::result::Result<usi
             );
         }
     }
-    Ok(files.len())
+    Ok(files
+        .iter()
+        .filter(|(path, contents)| originals[*path].0 != **contents)
+        .count())
 }
 
 /// Rename `path` to a hidden name beside it, for a deletion that can be
@@ -1035,14 +1042,18 @@ mod apply_patch_tests {
         // git-quoted with prefixes, mixed with an unprefixed pair.
         let mixed = "--- \"a/x\\ty\"\n+++ \"b/x\\ty\"\n@@ -1 +1 @@\n-a\n+b\n\
                      --- plain.txt\n+++ plain.txt\n@@ -1 +1 @@\n-c\n+d\n";
-        assert!(step.apply_diff_output(mixed, dir.path().to_str()).unwrap());
+        assert_eq!(
+            step.apply_diff_output(mixed, dir.path().to_str()).unwrap(),
+            Some(true)
+        );
         assert_eq!(read(&dir, "x\ty"), "b\n");
         assert_eq!(read(&dir, "plain.txt"), "d\n");
         // A literal `"q"` from a tool that doesn't quote isn't read as `q`.
         let literal = "--- \"q\"\n+++ \"q\"\n@@ -1 +1 @@\n-e\n+f\n";
-        assert!(
+        assert_eq!(
             step.apply_diff_output(literal, dir.path().to_str())
-                .unwrap()
+                .unwrap(),
+            Some(true)
         );
         assert_eq!(read(&dir, "\"q\""), "f\n");
         assert_eq!(read(&dir, "q"), "keep\n");

@@ -305,6 +305,7 @@ pub struct DiagnosticSegment {
 }
 
 pub struct HookContext {
+    pub file_changes: crate::file_changes::FileChanges,
     pub file_locks: FileRwLocks,
     /// Commands and staging share access; patch apply/rollback requires exclusive access
     /// because a patch can touch paths outside its job's input-file locks.
@@ -391,6 +392,7 @@ impl HookContext {
             }
         }
         Self {
+            file_changes: Default::default(),
             file_locks: FileRwLocks::new(files),
             diff_lock: Arc::new(RwLock::new(())),
             git,
@@ -1539,7 +1541,7 @@ impl Hook {
             tctx.insert(key, hook_vars[key].as_str().unwrap_or(""));
         }
         let expr_ctx = build_expr_ctx(&git_status_for_ctx, &hook_vars);
-        let hook_ctx = Arc::new(HookContext::new(
+        let mut hook_ctx = HookContext::new(
             files,
             repo.clone(),
             groups,
@@ -1552,7 +1554,9 @@ impl Hook {
             git_status.untracked_files.clone(),
             // Narrowed below to what the stash actually sets aside.
             git_status.unstaged_files.clone(),
-        ));
+        );
+        hook_ctx.file_changes.enabled = machine_output || reports.junit.is_some();
+        let hook_ctx = Arc::new(hook_ctx);
 
         crate::shutdown::watch(hook_ctx.failed.clone());
 

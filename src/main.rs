@@ -18,6 +18,7 @@ mod diff;
 mod env;
 mod error;
 mod error_report;
+mod file_changes;
 mod file_rw_locks;
 mod file_type;
 mod git;

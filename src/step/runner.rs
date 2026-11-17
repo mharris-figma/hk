@@ -464,9 +464,16 @@ impl Step {
         {
             cmd = cmd.env(key, value);
         }
+        let file_changes = ctx
+            .hook_ctx
+            .file_changes
+            .start(&self.name, (!self.stomp).then_some(job.files.as_slice()));
         let timing_guard = StepTimingGuard::new(ctx.hook_ctx.timing.clone(), self);
         let exec_result = cmd.execute().await;
         timing_guard.finish();
+        if let Some(file_changes) = file_changes {
+            file_changes.finish();
+        }
         // Record only commands that reached a running process. Template,
         // environment, mise, or spawn failures must not claim an effect that
         // never occurred. Script failures, cancellation, and timeouts all

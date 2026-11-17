@@ -558,7 +558,10 @@ pub async fn run_test_named(step: &Step, name: &str, test: &StepTest) -> Result<
     // doesn't apply fails the test instead of falling back to `fix`.
     let mut diff_reason = None;
     if matches!(test.run, RunKind::Diff) && code != 0 {
-        if step.apply_diff_output(&stdout, base_dir.to_str())? {
+        if step
+            .apply_diff_output(&stdout, base_dir.to_str())?
+            .is_some()
+        {
             code = 0;
             if step.check_after_diff
                 && let Some(check) = step.check.as_ref().filter(|c| !c.is_empty())

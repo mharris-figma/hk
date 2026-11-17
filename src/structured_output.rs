@@ -89,6 +89,8 @@ struct StepResult {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     failure_allowed: bool,
     duration_ms: u128,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    files_changed: Option<bool>,
     effects: Vec<ExecutedEffect>,
     diagnostics: Vec<Diagnostic>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -293,6 +295,7 @@ pub fn emit_run(
                 status,
                 failure_allowed: allowed_failures.contains(name),
                 duration_ms: timings.get(name).copied().unwrap_or(0),
+                files_changed: ctx.file_changes.get(name),
                 effects: executed_effects
                     .get(name)
                     .into_iter()
@@ -373,6 +376,7 @@ pub fn emit_noop_run(
                 status: "skipped",
                 failure_allowed: false,
                 duration_ms: 0,
+                files_changed: None,
                 effects: vec![],
                 diagnostics: vec![],
                 parse_warnings: vec![],
@@ -488,10 +492,19 @@ fn write_junit(path: &Path, run: &RunResult) -> Result<()> {
             time,
         )
         .unwrap();
-        if step.failure_allowed {
-            cases.push_str(
-                "      <properties><property name=\"failure_allowed\" value=\"true\"/></properties>\n",
-            );
+        if step.failure_allowed || step.files_changed.is_some() {
+            cases.push_str("      <properties>\n");
+            if step.failure_allowed {
+                cases.push_str("        <property name=\"failure_allowed\" value=\"true\"/>\n");
+            }
+            if let Some(changed) = step.files_changed {
+                writeln!(
+                    cases,
+                    "        <property name=\"files_changed\" value=\"{changed}\"/>"
+                )
+                .unwrap();
+            }
+            cases.push_str("      </properties>\n");
         }
         match step.status {
             // hk treats an allowed failure as accepted and the run succeeds
@@ -636,6 +649,7 @@ mod tests {
             status,
             failure_allowed: false,
             duration_ms: 10,
+            files_changed: None,
             effects: vec![],
             diagnostics: vec![],
             parse_warnings: vec![],
@@ -732,6 +746,7 @@ mod tests {
         let path = dir.path().join("junit.xml");
         let mut allowed = step("flaky", "failed");
         allowed.failure_allowed = true;
+        allowed.files_changed = Some(true);
         allowed.output = Some("transient error".to_string());
         let run = RunResult {
             schema_version: 1,
@@ -749,6 +764,8 @@ mod tests {
 
         assert!(xml.contains("tests=\"1\" failures=\"0\" errors=\"0\" skipped=\"0\""));
         assert!(xml.contains("<system-out>transient error</system-out>"));
+        assert!(xml.contains("<property name=\"failure_allowed\" value=\"true\"/>"));
+        assert!(xml.contains("<property name=\"files_changed\" value=\"true\"/>"));
         assert!(!xml.contains("<failure"));
     }
 
