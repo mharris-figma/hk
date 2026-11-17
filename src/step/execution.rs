@@ -537,8 +537,15 @@ impl Step {
                                             let _diff_guard = job.lock_diff(&ctx).await?;
                                             step.apply_diff_output(stdout, dir.as_deref())
                                         };
+                                        ctx.hook_ctx.file_changes.record(
+                                            &step.name,
+                                            match &applied {
+                                                Ok(changed) => Some(changed.unwrap_or(false)),
+                                                Err(_) => None,
+                                            },
+                                        );
                                         match applied {
-                                            Ok(true) => {
+                                            Ok(Some(_)) => {
                                                 if step.check_after_diff {
                                                     debug!(
                                                         "{step}: diff applied successfully, rerunning check on original files"
@@ -556,7 +563,7 @@ impl Step {
                                                 ctx.hook_ctx.inc_completed_jobs(1);
                                                 return Ok(applied_files);
                                             }
-                                            Ok(false) => {
+                                            Ok(None) => {
                                                 // Diff application failed - fall through to run fixer
                                                 debug!("{step}: diff application failed, falling back to fixer");
                                             }

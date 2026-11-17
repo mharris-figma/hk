@@ -85,4 +85,8 @@ HK_TIMING_JSON=hk-timing.json hk check --all
 
 Use `hk check --all --format jsonl` for structured execution events, `--sarif hk.sarif` for normalized diagnostics (only steps that set `diagnostic_format` produce them; see [diagnostics](/configuration#diagnostics)), or `--junit-xml hk.junit.xml` to report each step as a JUnit test case for CI test-result viewers. See [coding agents](/agents) for command effects and exact file lists.
 
+Final JSON/JSONL step results and JUnit test-case properties include `files_changed` when hk can measure it. For example, `hk fix --all --junit-xml hk.junit.xml` reports `<property name="files_changed" value="true"/>` for a formatter that changes a file, while leaving the test case passed if the step succeeds. `false` means the observed contents were unchanged, including a fixer that ran but did nothing.
+
+hk compares each command's input files while holding their file locks, and also includes files changed by patches it applies from `check_diff`. Changes are combined across the step's commands and batches; a later command can undo an earlier change without clearing the flag. Files an external command writes outside its input list are not measured. The field is omitted when observation is incomplete (for example, an unreadable file, interrupted command, or `stomp` step), unless a change was already observed. This measurement is enabled only for JSON/JSONL output or a JUnit report and does not change the step's exit status.
+
 See [troubleshooting](/logging) for log levels, traces, and configuration inspection.
